@@ -112,19 +112,26 @@ def main() -> int:
     print("\n④ 报告里不得再出现旧数字/旧说法")
     docs = {f: open(os.path.join(ROOT, f), encoding="utf-8").read()
             for f in ("README.md", "发布文案.md", "report/报告.md")}
+    # 纠错性引用要放过：形如「旧的错误说法（如「10–100 倍」）」的句子本身在讲旧说法。
+    # 判定规则：命中行里如果含 "错误说法" 或以 "· 旧版" 开头，就不算违规。
+    def real_hits(pat: str) -> list[str]:
+        out = []
+        for f, text in docs.items():
+            for line in text.splitlines():
+                if re.search(pat, line) and "错误说法" not in line:
+                    out.append(f"{f}: {line.strip()[:60]}")
+        return out
+
     bad = {
-        # 注意：允许「旧版写的是『10–100 倍』——本批实测 9.6–72.2×」这种**纠错性**引用，
-        # 所以下面两个模式排除了被「旧版」或引号标记过的上下文。
-        "10–100 倍（当作实测值使用）": r"(?<!旧版这里写的是「)10[-–—]100\s*倍(?!」)",
+        "10–100 倍当作实测值": r"(?<!旧版这里写的是「)10[-–—]100\s*倍(?!」)",
         "「本样本里就有 14% 的」": r"就有\s*14%\s*的",
-        "60–80 次请求后限流（当作结论使用）": r"(?<!约 )60[-–—]80\s*次请求后(?!限流」)",
+        "60–80 次请求后限流当作结论": r"(?<!约 )60[-–—]80\s*次请求后(?!限流」)",
         "2026-01-14 一审宣判": r"2026-01-14\s*一审",
         "SHA1 前 12 位（可反查）": r"SHA1\s*前\s*12\s*位",
         "获取注水量可行性整节": r"获取注水量的可行性",
     }
     for label, pat in bad.items():
-        hits = [f for f, t in docs.items() if re.search(pat, t)]
-        check(f"已清除：{label}", not hits, str(hits))
+        check(f"已清除：{label}", not real_hits(pat), str(real_hits(pat)[:1]))
 
     print(f"\n{'=' * 46}\n{CHECKS - len(FAILS)}/{CHECKS} 项通过")
     if FAILS:
