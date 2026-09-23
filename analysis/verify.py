@@ -50,8 +50,13 @@ def run(script: str) -> bool:
 
 def main() -> int:
     print("① 重跑管道")
+    before = open(os.path.join(REPORT, "数据观察.md"), encoding="utf-8").read() \
+        if os.path.exists(os.path.join(REPORT, "数据观察.md")) else ""
     check("analysis/analyze.py 跑通", run("analysis/analyze.py"))
     check("analysis/make_figures.py 跑通", run("analysis/make_figures.py"))
+    after = open(os.path.join(REPORT, "数据观察.md"), encoding="utf-8").read()
+    check("数据观察.md 是脚本生成的（无手改漂移）", before == after,
+          "重跑后内容变了，说明有人手改过" if before != after else "")
 
     print("\n② 数据与报告一致性")
     res = json.load(open(os.path.join(DATA, "analysis.json"), encoding="utf-8"))

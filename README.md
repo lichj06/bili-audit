@@ -182,12 +182,16 @@ report/figures/*.svg   2 张图（零依赖手写 SVG）
 ### 一键验证（数字可追溯）
 
 ```bash
-python3 analysis/analyze.py && python3 analysis/make_figures.py
+python3 analysis/verify.py     # 29 项自检：重跑管道 + 数字自洽 + 隐私无泄漏
 ```
 
 跑完会打印本报告里用到的每个数字：n、唯一评论数、各互动比的中位数与极差、
 触发标记的视频、以及每个标记在本批数据里**是否可达**。报告表里的中位数与
 图2 里的中位数由同一个 `percentile()` 算出，`make_figures.py` 结尾会断言二者一致。
+
+`verify.py` 还会检查：发布版数据里搜不到真标题/UP 名/评论文本/uid_hash、
+`analysis.json` 只剩稳定 id、报告里不再出现旧的错误说法（如「10–100 倍」「本样本里就有 14% 的」）。
+**任何一项失败都会返回码 1。**
 
 ---
 
