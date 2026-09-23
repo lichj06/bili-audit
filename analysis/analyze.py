@@ -4,233 +4,200 @@
 
 框架
 ----
-两类问题本质是同一个问题的两面：
+    注水（假互动）  分布过于【规则/突变】：点赞率高而投币比低、评论高度模板化
+    问号（真共鸣）  分布有【结构】：短促、密集、情绪集中
 
-    注水（假互动）  分布过于【规则/突变】：点赞率高但投币率极低、评论高度模板化
-    问号（真共鸣）  分布有【结构】：短促、密集、情绪集中、语义多样
+两者都用同一批数据算，都不做"判定"，只做【相对群体分布的偏离度】。
 
-两者都用同一批采到的数据算，都不做"判定"，只做【相对群体分布的偏离度】。
+隐私
+----
+输出里**不出现**标题、UP 名、uid —— 只用稳定 id（v01…v45）。
+id↔真标题的对照表在 data/raw-local/，不进 git。
+统计逻辑全在 analysis/pipeline.py，与 make_figures.py 共用（分位数必须同源）。
 
 三个纪律
 --------
 ① 只描述指标偏离群体分布的程度，**不下"这个视频注水了"的结论**
-② 用稳健统计（中位数 + MAD），避免少数极端值污染阈值
+② 用稳健统计（中位数 + MAD），且 z 分数**保留符号**（旧版取绝对值 → 方向判据失效）
 ③ 所有指标都给出计算方式，可复现、可反驳
 """
 
 from __future__ import annotations
 
 import json
-import math
 import os
-import re
-import statistics as st
-from collections import Counter, defaultdict
+import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-DATA = os.path.join(ROOT, "data")
-OUT = os.path.join(ROOT, "report")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pipeline import (  # noqa: E402
+    DATA, REPORT, analyse, load_comments_for_analysis, load_jsonl, median, percentile,
+)
 
-Q_PAT = re.compile(r"[?？]")
-Q3_PAT = re.compile(r"[?？]{3,}")
-
-
-def load_jsonl(path: str) -> list[dict]:
-    if not os.path.exists(path):
-        return []
-    out = []
-    for line in open(path, encoding="utf-8"):
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except Exception:  # noqa: BLE001
-                pass
-    return out
+RATIOS = [
+    ("r_like_view", "点赞 / 播放"),
+    ("r_coin_like", "投币 / 点赞"),
+    ("r_fav_like", "收藏 / 点赞"),
+    ("r_reply_view", "评论 / 播放"),
+]
+FLAG_LABEL = {"flag_like_high": "点赞率异常高", "flag_coin_low": "投币比异常低",
+              "flag_dup_high": "前8字重复率异常高"}
+ID_PREFIX = {"vid": "v", "user": "u"}
 
 
-def safe_div(a, b) -> float:
-    try:
-        return float(a) / float(b) if b else 0.0
-    except Exception:  # noqa: BLE001
-        return 0.0
+def stable_ids(videos: list[dict]) -> dict:
+    """按 data/videos.jsonl 的行序给每个 aid 一个稳定匿名 id：v01…v45。
+
+    同时给出 owner 的匿名 id（u01…）。真值只落在 data/raw-local/。
+    """
+    vmap, umap = {}, {}
+    for i, v in enumerate(videos, 1):
+        vmap[v.get("aid")] = f"v{i:02d}"
+        mid = v.get("owner_mid")
+        if mid is not None and mid not in umap:
+            umap[mid] = f"u{len(umap) + 1:02d}"
+    return {"video": vmap, "owner": umap}
 
 
-def mad_z(values: list[float], x: float) -> float:
-    """稳健 z 分数：|x − median| / (1.4826 × MAD)。MAD 为 0 时返回 0。"""
-    if len(values) < 4:
-        return 0.0
-    med = st.median(values)
-    mad = st.median([abs(v - med) for v in values])
-    if mad <= 1e-12:
-        return 0.0
-    return abs(x - med) / (1.4826 * mad)
-
-
-def analyse(videos: list[dict], comments: list[dict], min_comments: int = 20) -> dict:
-    by_video: dict[int, list[dict]] = defaultdict(list)
-    for c in comments:
-        by_video[c["aid"]].append(c)
-
-    rows = []
-    skipped = 0
-    for v in videos:
-        # 只保留评论样本足够的视频 —— 评论太少的视频会让 q_rate 等比例指标失去意义
-        if len(by_video.get(v.get("aid"), [])) < min_comments:
-            skipped += 1
-            continue
-        aid = v.get("aid")
-        cs = by_video.get(aid, [])
-        view = v.get("view") or 0
-        like = v.get("like") or 0
-        coin = v.get("coin") or 0
-        fav = v.get("favorite") or 0
-        share = v.get("share") or 0
-        reply = v.get("reply") or 0
-        danmaku = v.get("danmaku") or 0
-
-        texts = [c["content"] for c in cs]
-        n = len(texts)
-        # 评论重复度：完全重复率 + 前 8 字重复率（水军模板的典型特征）
-        exact = 1 - len(set(texts)) / n if n else 0.0
-        prefix = 1 - len({t[:8] for t in texts}) / n if n else 0.0
-        # 问号指数
-        q_hit = sum(1 for t in texts if Q_PAT.search(t))
-        q3_hit = sum(1 for t in texts if Q3_PAT.search(t))
-        q_total = sum(len(Q_PAT.findall(t)) for t in texts)
-        chars = sum(len(t) for t in texts)
-        # 评论者特征
-        levels = [c.get("level") for c in cs if isinstance(c.get("level"), int)]
-        uids = [c.get("uid_hash") for c in cs if c.get("uid_hash")]
-
-        rows.append({
-            "bvid": v.get("bvid"), "aid": aid, "title": v.get("title"),
-            "tname": v.get("tname"), "duration": v.get("duration"),
-            "view": view, "like": like, "coin": coin, "favorite": fav,
-            "share": share, "reply": reply, "danmaku": danmaku,
-            "n_comments_sampled": n,
-            # ── 互动比（注水检测的输入）──
-            "r_like_view": safe_div(like, view),
-            "r_coin_like": safe_div(coin, like),
-            "r_fav_like": safe_div(fav, like),
-            "r_share_view": safe_div(share, view),
-            "r_reply_view": safe_div(reply, view),
-            "r_danmaku_view": safe_div(danmaku, view),
-            # ── 评论文本特征 ──
-            "dup_exact": exact, "dup_prefix8": prefix,
-            "uniq_uids": len(set(uids)), "uid_concentration": 1 - safe_div(len(set(uids)), len(uids)),
-            "mean_level": st.mean(levels) if levels else None,
-            # ── 问号指数 ──
-            "q_rate": safe_div(q_hit, n),
-            "q3_rate": safe_div(q3_hit, n),
-            "q_per_1k_chars": safe_div(q_total * 1000, chars),
-            "q_total": q_total,
-        })
-
-    # ── 稳健偏离度 ──
-    metric_keys = ["r_like_view", "r_coin_like", "r_fav_like", "r_share_view",
-                   "r_reply_view", "r_danmaku_view", "dup_prefix8", "q_rate", "q3_rate"]
-    for k in metric_keys:
-        vals = [r[k] for r in rows if isinstance(r[k], (int, float))]
-        for r in rows:
-            r[f"z_{k}"] = round(mad_z(vals, r[k]), 2) if isinstance(r[k], (int, float)) else 0.0
-
-    # 注水风险：只用"便宜可刷"的指标偏离 + 评论模板化
-    # 逻辑：播放/点赞可以廉价刷，投币/收藏成本高；若点赞异常高而投币比异常低 → 值得核对
-    for r in rows:
-        r["flag_like_high"] = r["z_r_like_view"] >= 3.0
-        r["flag_coin_low"] = r["z_r_coin_like"] >= 3.0
-        r["flag_template"] = r["z_dup_prefix8"] >= 3.0
-        r["n_flags"] = sum([r["flag_like_high"], r["flag_coin_low"], r["flag_template"]])
-        r["q_index"] = round(r["q_rate"] * 100, 1)
-
-    return {"rows": rows, "n_videos": len(rows), "n_comments": len(comments),
-            "n_skipped_low_comment": skipped, "min_comments": min_comments}
-
-
-def report_markdown(res: dict) -> str:
+def report_markdown(res: dict, ids: dict) -> str:
     rows = res["rows"]
+    L = []
     if not rows:
         return "# 没有数据\n"
-    rows_sorted = sorted(rows, key=lambda r: -r["q_index"])
-    L = []
+    vmap = ids["video"]
+    vid = lambda r: vmap.get(r["aid"], "v??")  # noqa: E731
+    counts = {r["aid"]: r["n_comments_sampled"] for r in rows}
+
     L.append("# B 站互动数据形态观察\n")
-    L.append(f"**样本**：{res['n_videos']} 个热门视频 · {res['n_comments']} 条评论\n")
+    L.append(f"**样本**：{res['n_videos_sampled']} 个热门视频中，"
+             f"{res['n_videos']} 个取到评论（去重后 ≥{res['min_comments']} 条唯一评论）"
+             f"· 唯一评论 {res['n_comments_unique']} 条"
+             f"（原始写入 {res['n_comments_raw']} 行）\n")
+    L.append(f"> 视频只用稳定 id（{vid(rows[0])} …）标注，真标题不入库。\n")
 
     L.append("## 一、问号指数排行（评论中含 `?`/`？` 的比例）\n")
-    L.append("| # | 问号指数 | 含？？？的比例 | 标题 |")
-    L.append("|---|---|---|---|")
-    for i, r in enumerate(rows_sorted[:15], 1):
-        L.append(f"| {i} | **{r['q_index']}%** | {r['q3_rate'] * 100:.1f}% | {str(r['title'])[:38]} |")
+    if not any(isinstance(r.get("q_index"), (int, float)) for r in rows):
+        L.append("（本数据源没有评论文本 —— 问号指数不可算。"
+                 "原始评论在 `data/raw-local/` 时才可算，见 README。）\n")
+    else:
+        L.append("| # | 视频 | 问号指数 | 含？？？的比例 | 唯一评论数 |")
+        L.append("|---|---|---|---|---|")
+        for i, r in enumerate(sorted(rows, key=lambda x: -(x.get("q_index") or 0))[:15], 1):
+            L.append(f"| {i} | `{vid(r)}` | **{r['q_index']}%** | "
+                     f"{(r.get('q3_rate') or 0) * 100:.1f}% | {counts[r['aid']]} |")
 
     L.append("\n## 二、互动比分布\n")
     L.append("| 视频 | 播放 | 点赞率 | 投币/点赞 | 收藏/点赞 | 评论/播放 |")
     L.append("|---|---|---|---|---|---|")
     for r in sorted(rows, key=lambda x: -x["view"])[:15]:
-        L.append(f"| {str(r['title'])[:26]} | {r['view']:,} | {r['r_like_view'] * 100:.2f}% | "
-                 f"{r['r_coin_like'] * 100:.1f}% | {r['r_fav_like'] * 100:.1f}% | {r['r_reply_view'] * 1000:.2f}‰ |")
+        L.append(f"| `{vid(r)}` | {r['view']:,} | {r['r_like_view'] * 100:.2f}% | "
+                 f"{r['r_coin_like'] * 100:.1f}% | {r['r_fav_like'] * 100:.1f}% | "
+                 f"{r['r_reply_view'] * 1000:.2f}‰ |")
+
+    L.append("\n## 三、互动比基线（中位数与极差）\n")
+    L.append("| 指标 | 中位 | 区间 | 极差倍数 |")
+    L.append("|---|---|---|---|")
+    for k, name in RATIOS:
+        v = [r[k] for r in rows]
+        lo, hi = percentile(v, 0.0), percentile(v, 1.0)
+        L.append(f"| {name} | **{median(v) * 100:.2f}%** | "
+                 f"{lo * 100:.2f}% – {hi * 100:.2f}% | "
+                 f"**{hi / lo:.1f}×** |" if lo else f"| {name} | — | — | — |")
 
     flagged = sorted([r for r in rows if r["n_flags"] > 0], key=lambda x: -x["n_flags"])
-    L.append(f"\n## 三、指标偏离群体分布的视频（{len(flagged)} 个）\n")
+    L.append(f"\n## 四、指标偏离群体分布的视频（{len(flagged)} 个）\n")
     L.append("> ⚠️ 偏离 ≠ 注水。这里只报告「指标与同批样本的中位数偏离超过 3×MAD」，"
              "不构成任何指控。真实爆款、分区差异、活动推广都会造成同样的偏离。\n")
+    L.append("各标记的可达性（本批数据里该标记**能否**为真）：\n")
+    L.append("| 标记 | 方向 | 极端 z | 本批可达 |")
+    L.append("|---|---|---|---|")
+    for name, d in res["flag_diagnostics"].items():
+        reach = "是" if d["reachable"] else ("否（MAD=0，无离散度）" if d["mad_zero"] else "否")
+        L.append(f"| {FLAG_LABEL[name]} | {'高尾' if d['direction'] == 'high' else '低尾'} | "
+                 f"{d['extreme_z']:+.2f} | {reach} |")
+    L.append("")
     if flagged:
         L.append("| 视频 | 标记数 | 触发项 |")
         L.append("|---|---|---|")
         for r in flagged:
-            tags = []
-            if r["flag_like_high"]:
-                tags.append("点赞率异常高")
-            if r["flag_coin_low"]:
-                tags.append("投币比异常低")
-            if r["flag_template"]:
-                tags.append("评论模板化")
-            L.append(f"| {str(r['title'])[:30]} | {r['n_flags']} | {' / '.join(tags)} |")
+            tags = [FLAG_LABEL[k] for k in FLAG_LABEL if r[k]]
+            L.append(f"| `{vid(r)}` | {r['n_flags']} | {' / '.join(tags)} |")
     else:
         L.append("（本批样本中没有视频触发阈值）")
 
-    L.append("\n## 四、样本分布\n")
-    by_t = Counter(r["tname"] for r in rows if r["tname"])
-    L.append("| 分区 | 视频数 |")
-    L.append("|---|---|")
-    for t, c in by_t.most_common(10):
-        L.append(f"| {t} | {c} |")
+    L.append("\n## 五、样本构成\n")
+    L.append(f"- 热门榜取到 {res['n_videos_sampled']} 个视频")
+    L.append(f"- 其中 {res['n_videos_zero_comment']} 个**一条评论都没取到**（接口返回 0 条，"
+             f"原因未记录 —— 旧版采集器丢掉了返回码，见 README「已知缺陷」）")
+    L.append(f"- 剩下 {res['n_videos']} 个进入统计（n={res['n_videos']}）")
+    L.append(f"- 评论去重规则：{res['dedup_rule']}")
+    L.append(f"- 标记规则：{res['flag_rule']}")
     return "\n".join(L) + "\n"
+
+
+def _public(res: dict) -> dict:
+    """写盘版：去掉 aid / bvid 等可直接指向具体视频的标识，只留稳定 id。
+
+    aid/bvid 会出现在**本机**的 raw-local 里；发布版没有它们的必要
+    （自检见 analysis/verify.py）。
+    """
+    out = dict(res)
+    out["rows"] = [{k: v for k, v in r.items() if k not in ("aid", "bvid")}
+                   for r in res["rows"]]
+    return out
 
 
 def main() -> None:
     videos = load_jsonl(os.path.join(DATA, "videos.jsonl"))
-    comments = load_jsonl(os.path.join(DATA, "comments.jsonl"))
+    comments, csource = load_comments_for_analysis()
     if not videos:
         print("没有采集到数据，请先运行 bili/collect.py")
         return
-    res = analyse(videos, comments)
-    os.makedirs(OUT, exist_ok=True)
-    json.dump(res, open(os.path.join(DATA, "analysis.json"), "w", encoding="utf-8"),
-              ensure_ascii=False, indent=1)
-    md = report_markdown(res)
-    open(os.path.join(OUT, "数据观察.md"), "w", encoding="utf-8").write(md)
+    ids = stable_ids(videos)
+    res = analyse(videos, comments, source=csource)
+
+    # 匿名化：行里不带 aid/标题/uid，只带稳定 id
+    for r in res["rows"]:
+        r["vid"] = ids["video"].get(r["aid"], "v??")
+    res["id_map_note"] = ("id↔真标题对照表：data/raw-local/video_id_map.csv（不进 git）")
+
+    os.makedirs(REPORT, exist_ok=True)
+    with open(os.path.join(DATA, "analysis.json"), "w", encoding="utf-8") as f:
+        json.dump(_public(res), f, ensure_ascii=False, indent=1)
+    with open(os.path.join(REPORT, "数据观察.md"), "w", encoding="utf-8") as f:
+        f.write(report_markdown(res, ids))
 
     rows = res["rows"]
-    print(f"视频 {res['n_videos']} 个 · 评论 {res['n_comments']} 条\n")
-    print("── 问号指数 Top 8 ──")
-    for r in sorted(rows, key=lambda x: -x["q_index"])[:8]:
-        print(f"  {r['q_index']:5.1f}%  {str(r['title'])[:42]}")
+    print(f"评论来源：{csource}")
+    print(f"视频 {res['n_videos']} 个（采样 {res['n_videos_sampled']}，"
+          f"其中 {res['n_videos_zero_comment']} 个无评论）")
+    print(f"评论 原始 {res['n_comments_raw']} 行 → 去重后 {res['n_comments_unique']} 条"
+          f"（全局唯一文本 {res['n_comments_unique_text']} 条）\n")
+    qrows = [r for r in rows if isinstance(r.get("q_index"), (int, float))]
+    if qrows:
+        print("── 问号指数 Top 8 ──")
+        for r in sorted(qrows, key=lambda x: -x["q_index"])[:8]:
+            print(f"  {r['q_index']:5.1f}%  {r['vid']}  (n={r['n_comments_sampled']})")
+    else:
+        print("── 问号指数：本数据源没有评论文本，该指标不可算（未编数）──")
     print("\n── 互动比中位数 ──")
-    for k, name in [("r_like_view", "点赞/播放"), ("r_coin_like", "投币/点赞"),
-                    ("r_fav_like", "收藏/点赞"), ("r_reply_view", "评论/播放")]:
+    for k, name in RATIOS:
         v = [r[k] for r in rows]
-        print(f"  {name:10} 中位 {st.median(v) * 100:.2f}%   区间 {min(v) * 100:.2f}% – {max(v) * 100:.2f}%")
+        lo, hi = percentile(v, 0.0), percentile(v, 1.0)
+        print(f"  {name:10} 中位 {median(v) * 100:6.2f}%   "
+              f"区间 {lo * 100:6.2f}% – {hi * 100:7.2f}%   极差 {hi / lo:.1f}×")
     print("\n── 偏离群体分布的视频 ──")
     fl = [r for r in rows if r["n_flags"] > 0]
     for r in sorted(fl, key=lambda x: -x["n_flags"])[:8]:
-        tags = [t for t, f in (("点赞率异常高", r["flag_like_high"]), ("投币比异常低", r["flag_coin_low"]),
-                               ("评论模板化", r["flag_template"])) if f]
-        print(f"  [{r['n_flags']}] {' / '.join(tags):24} {str(r['title'])[:34]}")
+        tags = [FLAG_LABEL[k] for k in FLAG_LABEL if r[k]]
+        print(f"  [{r['n_flags']}] {' / '.join(tags):24} {r['vid']}  z_coin={r['z_r_coin_like']:+.2f}")
     if not fl:
         print("  （无）")
-    print(f"\n报告 → {os.path.join(OUT, '数据观察.md')}")
+    print("\n── 标记可达性 ──")
+    for name, d in res["flag_diagnostics"].items():
+        print(f"  {FLAG_LABEL[name]:16} 极端 z={d['extreme_z']:+.2f}  "
+              f"可达={'是' if d['reachable'] else '否'}"
+              f"{'（MAD=0）' if d['mad_zero'] else ''}")
+    print(f"\n报告 → {os.path.join(REPORT, '数据观察.md')}")
 
 
 if __name__ == "__main__":
