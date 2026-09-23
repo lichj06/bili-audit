@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="588" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="780" height="588" fill="#fff"/>
+<text x="16" y="28" font-size="16" font-weight="600" fill="#24292f">图1 · 问号指数排行（评论中含 ?/？ 的比例）· n=18 个视频</text>
+<line x1="210" y1="44" x2="210" y2="548" stroke="#d0d7de"/>
+<text x="210" y="568" font-size="11" fill="#57606a" text-anchor="middle">0</text>
+<line x1="330" y1="44" x2="330" y2="548" stroke="#d0d7de"/>
+<text x="330" y="568" font-size="11" fill="#57606a" text-anchor="middle">7</text>
+<line x1="450" y1="44" x2="450" y2="548" stroke="#d0d7de"/>
+<text x="450" y="568" font-size="11" fill="#57606a" text-anchor="middle">15</text>
+<line x1="570" y1="44" x2="570" y2="548" stroke="#d0d7de"/>
+<text x="570" y="568" font-size="11" fill="#57606a" text-anchor="middle">22</text>
+<line x1="690" y1="44" x2="690" y2="548" stroke="#d0d7de"/>
+<text x="690" y="568" font-size="11" fill="#57606a" text-anchor="middle">30</text>
+<text x="200" y="70" font-size="12.5" fill="#24292f" text-anchor="end">新三国up锐评老三国19：袁公路冢中枯骨，何足道哉！</text>
+<rect x="210" y="52" width="400" height="25" rx="3" fill="#0969da"/>
+<text x="618" y="70" font-size="12.5" font-weight="600" fill="#24292f">25.0%</text>
+<text x="200" y="112" font-size="12.5" fill="#24292f" text-anchor="end">歌剧老师锐评《披荆斩棘的哥哥2026》三公（下）</text>
+<rect x="210" y="94" width="320" height="25" rx="3" fill="#0969da"/>
+<text x="538" y="112" font-size="12.5" font-weight="600" fill="#24292f">20.0%</text>
+<text x="200" y="154" font-size="12.5" fill="#24292f" text-anchor="end">王老菊教你阳痿少女</text>
+<rect x="210" y="136" width="240" height="25" rx="3" fill="#0969da"/>
+<text x="458" y="154" font-size="12.5" font-weight="600" fill="#24292f">15.0%</text>
+<text x="200" y="196" font-size="12.5" fill="#24292f" text-anchor="end">【剧情】大理石厅谋杀案（2026）01【莱丝利·曼维尔 / 蒂姆</text>
+<rect x="210" y="178" width="168" height="25" rx="3" fill="#0969da"/>
+<text x="386" y="196" font-size="12.5" font-weight="600" fill="#24292f">10.5%</text>
+<text x="200" y="238" font-size="12.5" fill="#24292f" text-anchor="end">这是啥户型啊？</text>
+<rect x="210" y="220" width="160" height="25" rx="3" fill="#0969da"/>
+<text x="378" y="238" font-size="12.5" font-weight="600" fill="#24292f">10.0%</text>
+<text x="200" y="280" font-size="12.5" fill="#24292f" text-anchor="end">好久不见啊，佐助</text>
+<rect x="210" y="262" width="160" height="25" rx="3" fill="#0969da"/>
+<text x="378" y="280" font-size="12.5" font-weight="600" fill="#24292f">10.0%</text>
+<text x="200" y="322" font-size="12.5" fill="#24292f" text-anchor="end">迈克尔·许家印《朋友的酒DJ》史上经典演唱会开场！人生必看的现场</text>
+<rect x="210" y="304" width="142" height="25" rx="3" fill="#0969da"/>
+<text x="360" y="322" font-size="12.5" font-weight="600" fill="#24292f">8.9%</text>
+<text x="200" y="364" font-size="12.5" fill="#24292f" text-anchor="end">【独家】镇魂街第五季 王国纷争篇定档12月11日！</text>
+<rect x="210" y="346" width="90" height="25" rx="3" fill="#0969da"/>
+<text x="308" y="364" font-size="12.5" font-weight="600" fill="#24292f">5.6%</text>
+<text x="200" y="406" font-size="12.5" fill="#24292f" text-anchor="end">带着豆包去买瓜</text>
+<rect x="210" y="388" width="80" height="25" rx="3" fill="#0969da"/>
+<text x="298" y="406" font-size="12.5" font-weight="600" fill="#24292f">5.0%</text>
+<text x="200" y="448" font-size="12.5" fill="#24292f" text-anchor="end">第一届《汽车运动会》！！！</text>
+<rect x="210" y="430" width="80" height="25" rx="3" fill="#0969da"/>
+<text x="298" y="448" font-size="12.5" font-weight="600" fill="#24292f">5.0%</text>
+<text x="200" y="490" font-size="12.5" fill="#24292f" text-anchor="end">和同父异母的妹妹去旅游会发生什么？</text>
+<rect x="210" y="472" width="80" height="25" rx="3" fill="#0969da"/>
+<text x="298" y="490" font-size="12.5" font-weight="600" fill="#24292f">5.0%</text>
+<text x="200" y="532" font-size="12.5" fill="#24292f" text-anchor="end">每天都要去航天大杀四方</text>
+<rect x="210" y="514" width="80" height="25" rx="3" fill="#0969da"/>
+<text x="298" y="532" font-size="12.5" font-weight="600" fill="#24292f">5.0%</text>
+<text x="760" y="580" font-size="11" fill="#57606a" text-anchor="end">数据与代码开源 · 样本来自 B 站热门榜公开数据</text></svg>
